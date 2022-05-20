@@ -31,15 +31,27 @@ class ReacherEnv(gym.Env):
         np.array([2 * math.pi, 1.5 * math.pi, 1.0 * math.pi]),
         dtype=np.float32)
     self.observation_space = gym.spaces.Box(
-        # np.array([-1, -1, -1, -1, -1, -1, 0.05, 0.05, 0.05, -0.3, -0.3, -0.3]),
-        # np.array([1, 1, 1, 1, 1, 1, 0.1, 0.1, 0.1, 0.3, 0.3, 0.3]),
+        np.array([ -1, -1, -1, -1, -1, -1, 0.05, 0.05, 0.05, -0.3, -0.3, -0.3]),
+        np.array([1,  1,  1,  1,  1,  1,  0.1,  0.1,  0.1,  0.3,  0.3,  0.3]),
         # observation space range for target
-        np.array([-0.1, -0.1, 0.05]),
-        np.array([0.1, 0.1, 0.15]),
+        #np.array([-0.1, -0.1, 0.05]),
+        #np.array([0.1, 0.1, 0.15]),
         dtype=np.float32)
     self._leg_index = leg_index
 
-    self.target = np.array([0, 0, 0.1])
+    self.rollout_length = 1000
+
+    # (0, 0, 0)
+    # (-0.17392000, -0.0335, 0.0499) <-- initial position
+    # Lower: 0.000, Middle: 0.926, Upper: 0.628
+    # (0.17392, -0.0335, 0.0499)
+    self.lineTarget = np.linspace(-0.17392000, 0.17392, num=self.rollout_length)
+    self.targetArr = np.array([np.tile([0.0499], self.rollout_length), np.tile([-0.0335], self.rollout_length), self.lineTarget])
+    self.targetArr = np.transpose(self.targetArr)
+    self.target = self.targetArr[0]
+    self.index = 0
+
+    self.done_ball = False
 
     self._run_on_robot = run_on_robot
     if self._run_on_robot:
@@ -68,8 +80,24 @@ class ReacherEnv(gym.Env):
     else:
       self.urdf_filename = "pupper_arm_no_mesh.urdf"
 
+  def create_debug_sphere(self):
+    target_visual_shape = self._bullet_client.createVisualShape(self._bullet_client.GEOM_SPHERE, radius=0.015)
+    sphere_id = self._bullet_client.createMultiBody(baseVisualShapeIndex=target_visual_shape,
+                                  basePosition=self.target)
+    return sphere_id
+
   def reset(self, target=None):
-    self.target = target if target is not None else np.array([0.00, 0.00, 0.1])
+    #print("ENV HAS BEEN RESET ===========================================")
+    
+    #self.target = target if target is not None else np.array([0.00, 0.00, 0.1])
+    self.index = 0
+    # self.debug_sphere_ID = self.create_debug_sphere()
+    # self._target_visual_shape = self._bullet_client.createVisualShape(
+    #       self._bullet_client.GEOM_SPHERE, radius=0.015)
+    # self._target_visualization = self._bullet_client.createMultiBody(
+    #       baseVisualShapeIndex=self._target_visual_shape,
+    #       basePosition=self.target)
+    self.done_ball = False
 
     if self._run_on_robot:
       reacher_robot_utils.blocking_move(self._hardware_interface,
@@ -104,12 +132,6 @@ class ReacherEnv(gym.Env):
 
       # target_angles = np.random.uniform(-0.5*math.pi, 0.5*math.pi, 3)
       # self.target = reacher_kinematics.calculate_forward_kinematics_robot(target_angles)
-
-      self._target_visual_shape = self._bullet_client.createVisualShape(
-          self._bullet_client.GEOM_SPHERE, radius=0.015)
-      self._target_visualization = self._bullet_client.createMultiBody(
-          baseVisualShapeIndex=self._target_visual_shape,
-          basePosition=self.target)
 
       obs = self._get_obs()
 
@@ -152,11 +174,11 @@ class ReacherEnv(gym.Env):
     joint_angles = [joint_data[0] for joint_data in joint_states][0:3]
     joint_velocities = [joint_data[1] for joint_data in joint_states][0:3]
     return np.concatenate([
-        # np.cos(joint_angles),
-        # np.sin(joint_angles),
+        np.cos(joint_angles),
+        np.sin(joint_angles),
         self.target,
-        # joint_velocities,
-        # self._get_vector_from_end_effector_to_goal(),
+        #joint_velocities,
+        self._get_vector_from_end_effector_to_goal(),
     ])
 
   def _get_obs_on_robot(self):
@@ -167,15 +189,28 @@ class ReacherEnv(gym.Env):
     joint_velocities = self._robot_state.velocity[self._leg_index *
                                                   3:self._leg_index * 3 + 3]
     np.set_printoptions(precision=2)
+    # Uncommented everything but target
     return np.concatenate([
-        # np.cos(joint_angles),
-        # np.sin(joint_angles),
+        np.cos(joint_angles),
+        np.sin(joint_angles),
         self.target,
-        # joint_velocities,
-        # self._get_vector_from_end_effector_to_goal(),
+        #joint_velocities,
+        self._get_vector_from_end_effector_to_goal(),
     ])
 
   def step(self, actions):
+
+    if not self.done_ball:
+      self._target_visual_shape = self._bullet_client.createVisualShape(
+            self._bullet_client.GEOM_SPHERE, radius=0.015)
+      self._target_visualization = self._bullet_client.createMultiBody(
+            baseVisualShapeIndex=self._target_visual_shape,
+            basePosition=self.target)
+      self.done_ball = True
+      
+    self._bullet_client.resetBasePositionAndOrientation(self._target_visualization,
+                                        posObj=self.target,
+                                        ornObj=[0, 0, 0, 1])
 
     if self._run_on_robot:
       self._apply_actions_on_robot(actions)
@@ -185,10 +220,24 @@ class ReacherEnv(gym.Env):
       ob = self._get_obs()
       self._bullet_client.stepSimulation()
 
+    # self._target_visual_shape = self._bullet_client.createVisualShape(
+    #       self._bullet_client.GEOM_SPHERE, radius=0.015)
+    # self._target_visualization = self._bullet_client.createMultiBody(
+    #       baseVisualShapeIndex=self._target_visual_shape,
+    #       basePosition=self.target)
+
+
+    # important shit
     reward_dist = -np.linalg.norm(
         self._get_vector_from_end_effector_to_goal())**2
     reward_ctrl = 0
     reward = reward_dist + reward_ctrl
+
+
+    
+    if self.index < self.rollout_length:
+      self.target = self.targetArr[self.index]
+      self.index += 1
 
     done = False
 
@@ -213,6 +262,8 @@ class ReacherEnv(gym.Env):
           linkIndex=end_effector_link_id,
           computeForwardKinematics=1)[0]
       # print("end effector: ", end_effector_pos)
+      # print("target: ")
+      # print(self.target)
     return np.array(end_effector_pos) - np.array(self.target)
 
   def shutdown(self):

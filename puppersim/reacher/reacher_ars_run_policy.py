@@ -55,7 +55,7 @@ def main(argv):
   parser.add_argument("--log_to_file", default=False, action='store_true', help="Whether to log data to the disk.")
   parser.add_argument("--realtime", default=False, action='store_true', help="Run at realtime.")
   parser.add_argument("--render_meshes", default=False, action='store_true', help="Whether to render robot meshes.")
-  parser.add_argument("--rollout_length", type=int, default=200, help="Number of timesteps per rollout")
+  parser.add_argument("--rollout_length", type=int, default=1000, help="Number of timesteps per rollout")
   
   if len(argv):
     args = parser.parse_args(argv)
@@ -134,10 +134,10 @@ def main(argv):
 
       # Random targets
       np.random.seed(0)
-      possible_targets = reacher_kinematics.random_reachable_points(100)
+      #possible_targets = reacher_kinematics.random_reachable_points(100)
 
       ## 8 possible targets gets -5
-      target = random.choice(possible_targets)
+      target = np.array([0, 0, 0.1])
       obs = env.reset(target)
       done = False
       totalr = 0.
