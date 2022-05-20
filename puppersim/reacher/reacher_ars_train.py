@@ -11,6 +11,7 @@ import os
 import numpy as np
 import gym
 from packaging import version
+import json
 
 import arspb.logz as logz
 from puppersim.reacher import reacher_kinematics
@@ -103,10 +104,10 @@ class Worker(object):
       
       # Random targets
       np.random.seed(0)
-      targets = reacher_kinematics.random_reachable_points(100)
+      #targets = reacher_kinematics.random_reachable_points(100)
 
       for i in range(number_rollouts):
-        target = targets[i%len(targets)] if targets is not None else None
+        target = np.array([0.0, 0.0, 0.1])
         (total_reward, steps) = self.rollout(shift=shift, rollout_length=rollout_length, target=target)
         average_reward += total_reward / number_rollouts
         total_steps += steps
@@ -243,6 +244,8 @@ class ARSLearner(object):
         self.delta_std = delta_std
         self.logdir = logdir
         self.shift = shift
+        #with open("data/params.json") as f:
+          #params = json.load(f)
         self.params = params
         self.max_past_avg_reward = float('-inf')
         self.num_episodes_used = float('inf')
@@ -528,7 +531,7 @@ if __name__ == '__main__':
     args = parser.parse_args() 
     params = vars(args)
 
-    ray.init()
+    ray.init(num_cpus=10) # only use 10 cpu cores
     assert ray.is_initialized()
     try:
       run_ars(params)
